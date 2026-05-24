@@ -1,27 +1,22 @@
-name: Deploy Blog
-
+name: Deploy Jamstack Blog
 on:
   workflow_dispatch:
-
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
+  contents: write
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
       - run: npm install
       - run: node build.js
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-      - uses: actions/upload-pages-artifact@v3
+      - uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: ./dist
-      - uses: actions/deploy-pages@v4
+          folder: dist
+          branch: gh-pages
