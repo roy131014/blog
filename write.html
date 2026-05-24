@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>글쓰기 관리자</title>
+    <!-- Supabase 라이브러리 로드 -->
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 20px auto; padding: 0 20px; color: #333; }
+        input, textarea, button { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { background-color: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>✍️ 새 글과 그림 올리기</h2>
+    <form id="writeForm">
+        <input type="text" id="title" placeholder="글 제목을 입력하세요" required>
+        <input type="file" id="image" accept="image/*" required>
+        <textarea id="content" placeholder="여기에 본문을 자유롭게 작성하세요" rows="8" required></textarea>
+        <button type="submit">블로그에 등록하기</button>
+    </form>
+
+    <script>
+        // [중요] 내 Supabase 정보로 꼭 변경해 주세요!
+        const SUPABASE_URL = 'https://txvihsiqkxmisarnjnug.supabase.co/rest/v1/';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR4dmloc2lxa3htaXNhcm5qbnVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1ODE2NDYsImV4cCI6MjA5NTE1NzY0Nn0.ADTKC3kM7sqFL7UBEfncRI1Szau5nC__p5TeZeGLxjw';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 모바일 초경량 WebP 이미지 압축기
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 1024;
+                        let width = img.width, height = img.height;
+                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.75);
+                    };
+                };
+            });
+        }
+
+        document.getElementById('writeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('title').value;
+            const content = document.getElementById('content').value;
+            const fileInput = document.getElementById('image').files;
+
+            if (fileInput.length === 0) { alert('사진을 선택해 주세요.'); return; }
+            const file = fileInput[0];
+
+            try {
+                // 1. 이미지 압축 및 Supabase 스토리지 업로드
+                const compressedBlob = await compressImage(file);
+                const fileName = `${Date.now()}.webp`;
+                
+                const { error: upError } = await supabase.storage
+                    .from('blog-images') // Supabase에 만든 스토리지 버킷 이름
+                    .upload(fileName, compressedBlob, { contentType: 'image/webp' });
+                
+                if (upError) throw upError;
+
+                // 2. 업로드된 이미지 공개 URL 주소 따오기
+                const { data: urlData } = supabase.storage.from('blog-images').getPublicUrl(fileName);
+
+                // 3. 데이터베이스(posts 테이블)에 저장
+                const { error: dbError } = await supabase
+                    .from('posts')
+                    .insert([{ title, content, image_url: urlData.publicUrl }]);
+                
+                if (dbError) throw dbError;
+
+                alert('🎉 데이터베이스 저장 성공! 이제 깃허브 Actions 탭으로 가셔서 [Run workflow] 버튼을 누르면 블로그에 글이 나타납니다.');
+                
+            } catch (err) {
+                alert('오류가 발생했습니다: ' + err.message);
+            }
+        });
+    </script>
+</body>
+</html>
